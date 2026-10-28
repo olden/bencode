@@ -167,7 +167,8 @@ gofmt -l .
 [GitHub Actions](.github/workflows/ci.yml) runs tests with the race detector and
 coverage, `go vet`, and a formatting check on Go **1.24.x, 1.25.x, 1.26.x, and
 1.27.x** for pushes and pull requests. Each job uses its selected toolchain
-without automatic upgrades.
+without automatic upgrades. Library tests also run on 32-bit Linux (`386`) to
+check architecture-dependent integer boundaries.
 
 Run benchmarks or additional fuzzing locally:
 

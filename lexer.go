@@ -99,17 +99,21 @@ func (l *Lexer) NextToken() (Token, error) {
 				if ch == '-' {
 					return Token{}, fmt.Errorf("byte %d: string length cannot be negative", start)
 				}
-				length, err := parseInt64(lengthBytes)
+				if len(lengthBytes) > 1 && lengthBytes[0] == '0' {
+					return Token{}, fmt.Errorf("byte %d: invalid string length: leading zero", start)
+				}
+				// Lengths are slice indexes, so parse directly into the native
+				// int range instead of narrowing an int64 on 32-bit systems.
+				length, err := strconv.Atoi(string(lengthBytes))
 				if err != nil {
 					return Token{}, fmt.Errorf("byte %d: invalid string length: %w", start, err)
 				}
-				// Compare before conversion or addition so both int64 and int
-				// overflow are impossible, including on 32-bit platforms.
-				if length > int64(len(l.input)-l.pos) {
+				// Check the remaining bytes before adding the length to pos.
+				if length > len(l.input)-l.pos {
 					return Token{}, fmt.Errorf("byte %d: truncated string: %w", start, io.ErrUnexpectedEOF)
 				}
-				str := l.input[l.pos : l.pos+int(length)]
-				l.pos += int(length)
+				str := l.input[l.pos : l.pos+length]
+				l.pos += length
 				return Token{Type: TokenString, Value: str}, nil
 			}
 

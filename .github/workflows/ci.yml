@@ -58,6 +58,12 @@ jobs:
       - name: Test
         run: go test -race -count=1 -cover ./...
 
+      - name: Test on 32-bit architecture
+        env:
+          GOARCH: '386'
+          CGO_ENABLED: '0'
+        run: go test -count=1 ./...
+
       - name: Lint comparative benchmarks
         working-directory: benchmarks
         run: go vet ./...
