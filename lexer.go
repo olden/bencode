@@ -2,26 +2,32 @@ package bencode
 
 import (
 	"fmt"
-	"unicode"
+	"io"
+	"strconv"
 )
 
 func parseInt64(b []byte) (int64, error) {
-	var n int64
-	neg := false
-	if len(b) > 0 && b[0] == '-' {
-		neg = true
-		b = b[1:]
+	digits := b
+	negative := len(b) > 0 && b[0] == '-'
+	if negative {
+		digits = b[1:]
 	}
-	for _, c := range b {
-		if c < '0' || c > '9' {
+	if len(digits) == 0 {
+		return 0, fmt.Errorf("missing digits")
+	}
+	if digits[0] == '0' && (len(digits) > 1 || negative) {
+		return 0, fmt.Errorf("leading zero or negative zero")
+	}
+	for _, c := range digits {
+		if !isDigit(c) {
 			return 0, fmt.Errorf("invalid digit: %c", c)
 		}
-		n = n*10 + int64(c-'0')
 	}
-	if neg {
-		n = -n
-	}
-	return n, nil
+	return strconv.ParseInt(string(b), 10, 64)
+}
+
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
 }
 
 // TokenType represents the type of token in the bencode format
@@ -57,7 +63,7 @@ func NewLexer(input []byte) *Lexer {
 // NextToken returns the next token from the input
 func (l *Lexer) NextToken() (Token, error) {
 	if l.pos >= len(l.input) {
-		return Token{}, fmt.Errorf("end of input")
+		return Token{}, io.EOF
 	}
 
 	ch := l.input[l.pos]
@@ -75,28 +81,32 @@ func (l *Lexer) NextToken() (Token, error) {
 	case ':':
 		return Token{Type: TokenColon}, nil
 	default:
-		if unicode.IsDigit(rune(ch)) || ch == '-' {
+		if isDigit(ch) || ch == '-' {
 			start := l.pos - 1
 			if ch == '-' {
-				if l.pos >= len(l.input) || !unicode.IsDigit(rune(l.input[l.pos])) {
-					return Token{}, fmt.Errorf("invalid negative number format")
+				if l.pos >= len(l.input) || !isDigit(l.input[l.pos]) {
+					return Token{}, fmt.Errorf("byte %d: invalid negative number format", start)
 				}
 			}
 
-			for l.pos < len(l.input) && unicode.IsDigit(rune(l.input[l.pos])) {
+			for l.pos < len(l.input) && isDigit(l.input[l.pos]) {
 				l.pos++
 			}
 			lengthBytes := l.input[start:l.pos]
 
 			if l.pos < len(l.input) && l.input[l.pos] == ':' { // This is a string value
 				l.pos++ // skip ':'
-				var length int64
+				if ch == '-' {
+					return Token{}, fmt.Errorf("byte %d: string length cannot be negative", start)
+				}
 				length, err := parseInt64(lengthBytes)
 				if err != nil {
-					return Token{}, fmt.Errorf("invalid string length: %v", err)
+					return Token{}, fmt.Errorf("byte %d: invalid string length: %w", start, err)
 				}
-				if l.pos+int(length) > len(l.input) {
-					return Token{}, fmt.Errorf("unexpected end of input while reading string")
+				// Compare before conversion or addition so both int64 and int
+				// overflow are impossible, including on 32-bit platforms.
+				if length > int64(len(l.input)-l.pos) {
+					return Token{}, fmt.Errorf("byte %d: truncated string: %w", start, io.ErrUnexpectedEOF)
 				}
 				str := l.input[l.pos : l.pos+int(length)]
 				l.pos += int(length)
@@ -106,6 +116,6 @@ func (l *Lexer) NextToken() (Token, error) {
 			// Otherwise it's a numeric token (e.g., used in integers)
 			return Token{Type: TokenNumber, Value: lengthBytes}, nil
 		}
-		return Token{}, fmt.Errorf("unexpected character: %q", ch)
+		return Token{}, fmt.Errorf("byte %d: unexpected character: %q", l.pos-1, ch)
 	}
 }
