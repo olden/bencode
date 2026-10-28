@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Test and lint (Go ${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.24.x', '1.25.x', '1.26.x', '1.27.x']
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go-version }}
+          # This module has no external dependencies or go.sum.
+          cache: false
+
+      - name: Show Go version
+        run: go version
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'Run gofmt -w on these files:\n%s\n' "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: Lint
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 -cover ./...
+
+      - name: Test on 32-bit architecture
+        env:
+          GOARCH: '386'
+          CGO_ENABLED: '0'
+        run: go test -count=1 ./...
+
+      - name: Lint comparative benchmarks
+        working-directory: benchmarks
+        run: go vet ./...
+
+      - name: Test comparative benchmark correctness
+        working-directory: benchmarks
+        run: go test -race -count=1 ./...
+
+      - name: Smoke-test comparative benchmarks
+        working-directory: benchmarks
+        run: go test -run '^$' -bench . -benchtime=1x ./...

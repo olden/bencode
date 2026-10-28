@@ -2,6 +2,9 @@ package bencode
 
 import (
 	"bytes"
+	"errors"
+	"io"
+	"strconv"
 	"testing"
 )
 
@@ -47,6 +50,37 @@ func TestLexer_AllTokenTypes(t *testing.T) {
 				if tok.Type != exp.Type || !bytes.Equal(tok.Value, exp.Value) {
 					t.Errorf("token %d mismatch: got %+v, want %+v", i, tok, exp)
 				}
+			}
+		})
+	}
+}
+
+func TestLexer_StringLengthBounds(t *testing.T) {
+	maxInt := uint64(^uint(0) >> 1)
+	aboveInt32Error := error(io.ErrUnexpectedEOF)
+	if strconv.IntSize == 32 {
+		aboveInt32Error = strconv.ErrRange
+	}
+	for _, tt := range []struct {
+		name   string
+		length string
+		want   error
+	}{
+		{"native_max", strconv.FormatUint(maxInt, 10), io.ErrUnexpectedEOF},
+		{"native_overflow", strconv.FormatUint(maxInt+1, 10), strconv.ErrRange},
+		{"int32_max", "2147483647", io.ErrUnexpectedEOF},
+		{"int32_overflow", "2147483648", aboveInt32Error},
+		{"int32_wraparound", "4294967296", aboveInt32Error},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			// A nonzero position also exercises the end-index addition check.
+			lexer := NewLexer([]byte("1:y" + tt.length + ":x"))
+			if _, err := lexer.NextToken(); err != nil {
+				t.Fatal(err)
+			}
+			token, err := lexer.NextToken()
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("got token %#v and error %v, want %v", token, err, tt.want)
 			}
 		})
 	}

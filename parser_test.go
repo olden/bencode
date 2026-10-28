@@ -30,7 +30,7 @@ func TestParser_Parse(t *testing.T) {
 		},
 		// nested list in dict
 		{
-			"d4:spaml5:hello5:worlde3:fooi99ee",
+			"d3:fooi99e4:spaml5:hello5:worldee",
 			BDict{
 				"spam": BList{BString([]byte("hello")), BString([]byte("world"))},
 				"foo":  BInt(99),
@@ -76,7 +76,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 }
 
 func BenchmarkParser_Parse(b *testing.B) {
-	input := []byte("d4:spaml5:hello5:worlde3:fooi99ee")
+	input := []byte("d3:fooi99e4:spaml5:hello5:worldee")
 	for i := 0; i < b.N; i++ {
 		p, err := NewParser(input)
 		if err != nil {

@@ -3,7 +3,7 @@ package decoder
 import (
 	"testing"
 
-	"torantulla/pkg/bencode"
+	"github.com/olden/bencode"
 )
 
 type testStruct struct {
